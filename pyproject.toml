@@ -16,5 +16,5 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    # Development tools can be added here later (e.g., pytest, ruff, mypy)
+    "pytest>=7.0.0"
 ]

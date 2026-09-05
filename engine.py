@@ -5,17 +5,29 @@ import collections
 
 class BackgroundModel:
     def __init__(self, h, w, n_frames=90):
-        self.buf   = collections.deque(maxlen=n_frames)
-        self.bg    = None
-        self.ready = False
         self.h, self.w = h, w
-        self._tick = 0
+        self.reset()
+
+    def reset(self):
+        self._sum = None
+        self._count = 0
+        self.bg = None
+        self.ready = False
 
     def update(self, frame_f32):
-        self.buf.append(frame_f32)
-        self._tick += 1
-        if len(self.buf) >= 15 and self._tick % 6 == 0:
-            self.bg    = np.mean(self.buf, axis=0).astype(np.float32)
+        if self._sum is None:
+            self._sum = frame_f32.copy()
+        else:
+            self._sum += frame_f32
+        
+        self._count += 1
+        
+        if self._count >= 15 and self._count % 6 == 0:
+            self.finalize()
+
+    def finalize(self):
+        if self._count > 0:
+            self.bg = (self._sum / self._count).astype(np.float32)
             self.ready = True
 
     def get(self):

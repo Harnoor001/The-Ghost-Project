@@ -93,9 +93,7 @@ def main():
     if not run_calibration(cap, bg_model, w, h, seconds=3):
         cap.release(); cv2.destroyAllWindows(); return
 
-    if bg_model.buf:
-        bg_model.bg    = np.mean(bg_model.buf, axis=0).astype(np.float32)
-        bg_model.ready = True
+    bg_model.finalize()
 
     sc_idx = 0
     while True:
@@ -125,14 +123,12 @@ def main():
             print(f"[SCREENSHOT] {fn}")
             sc_idx += 1
         elif key == ord('r'):
-            bg_model.__init__(h, w)
+            bg_model.reset()
             portal.invisible = False
             portal._alpha    = 0.0
             if not run_calibration(cap, bg_model, w, h, 3):
                 break
-            if bg_model.buf:
-                bg_model.bg    = np.mean(bg_model.buf, axis=0).astype(np.float32)
-                bg_model.ready = True
+            bg_model.finalize()
 
     cap.release()
     cv2.destroyAllWindows()
