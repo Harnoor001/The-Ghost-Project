@@ -127,7 +127,11 @@ The-Ghost-Project/
 │
 ├── pyproject.toml
 ├── main.py
-├── engine.py
+├── core/
+├── vision/
+├── interaction/
+├── effects/
+├── rendering/
 └── README.md
 ```
 

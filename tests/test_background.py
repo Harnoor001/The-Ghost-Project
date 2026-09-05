@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from engine import BackgroundModel
+from vision.background import BackgroundModel
 
 def test_initial_state():
     bg = BackgroundModel(720, 1280)

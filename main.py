@@ -3,16 +3,15 @@ import time
 import cv2
 import numpy as np
 
-def _detect_device():
-    try:
-        import torch
-        if torch.cuda.is_available():
-            return "GPU/"+torch.cuda.get_device_name(0).split()[0]
-    except ImportError:
-        pass
-    return "CPU"
-
-from engine import BackgroundModel, SegmentationEngine, HandTracker, PortalBox, HUD
+from core.config import config
+from core.state import FrameContext
+from core.camera import Camera
+from vision.segmentation import SegmentationEngine
+from vision.hand_tracking import HandTracker
+from vision.background import BackgroundModel
+from interaction.gestures import GestureDetector
+from effects.invisibility import InvisibilityEffect
+from rendering.compositor import Compositor
 
 BANNER = """
 Ghost / Invisibility Mode
@@ -26,17 +25,17 @@ Ghost / Invisibility Mode
 """
 WINDOW = "Ghost / Invisibility Mode"
 
-def run_calibration(cap, bg_model, w, h, seconds=3):
+def run_calibration(cap: Camera, bg_model: BackgroundModel, w: int, h: int, seconds: int):
     print(f"[CAL] Stand still {seconds}s ...")
     start = time.time()
     while time.time() - start < seconds:
         ret, frame = cap.read()
         if not ret: continue
         bg_model.update(frame.astype(np.float32))
-        rem  = int(seconds - (time.time()-start)) + 1
+        rem = int(seconds - (time.time()-start)) + 1
         disp = (frame * 0.5).astype(np.uint8)
-        msg  = "STAND STILL  —  CALIBRATING BACKGROUND"
-        tw   = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0][0]
+        msg = "STAND STILL  —  CALIBRATING BACKGROUND"
+        tw = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0][0]
         cv2.putText(disp, msg, ((w-tw)//2, h//2-50),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,230,255), 2, cv2.LINE_AA)
         tw2 = cv2.getTextSize(str(rem), cv2.FONT_HERSHEY_SIMPLEX, 4.0, 5)[0][0]
@@ -50,89 +49,87 @@ def run_calibration(cap, bg_model, w, h, seconds=3):
 
 def main():
     print(BANNER)
-    dev_str = _detect_device()
-    print(f"[INFO] Device: {dev_str}")
+    cam_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
-    cam_idx  = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    cap      = None
-    backends = ([(cv2.CAP_DSHOW,"DirectShow"),(cv2.CAP_MSMF,"MSMF"),(cv2.CAP_ANY,"Auto")]
-                if sys.platform=="win32" else [(cv2.CAP_ANY,"Auto")])
-    probe = None
-    for backend, name in backends:
-        print(f"[CAM] Trying {name} ...")
-        _c = cv2.VideoCapture(cam_idx + backend)
-        if _c.isOpened():
-            _c.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
-            _c.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-            _c.set(cv2.CAP_PROP_FPS, 30)
-            ret, probe = _c.read()
-            if ret and probe is not None:
-                cap = _c
-                print(f"[CAM] OK with {name}")
-                break
-            _c.release()
-
-    if cap is None:
-        print("[ERROR] Could not open webcam. Close Teams/Zoom first.")
+    try:
+        cap = Camera(cam_idx, config.camera)
+    except RuntimeError as e:
+        print(f"[ERROR] {e}")
         sys.exit(1)
 
-    h, w = probe.shape[:2]
-    print(f"[INFO] Resolution: {w}x{h}")
+    h, w = cap.actual_h, cap.actual_w
     print("[INIT] Loading models ...")
 
-    seg      = SegmentationEngine()
-    tracker  = HandTracker()
-    bg_model = BackgroundModel(h, w, n_frames=90)
-    portal   = PortalBox()
-    hud      = HUD(h, w, dev_str)
+    seg = SegmentationEngine(config.segmentation)
+    tracker = HandTracker(config.gesture)
+    bg_model = BackgroundModel(h, w)
+    
+    detector = GestureDetector(config.gesture)
+    effect = InvisibilityEffect()
+    compositor = Compositor(h, w, cap.device_name)
 
     print("[INIT] Ready!\n")
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(WINDOW, min(w,1280), min(h,720))
+    cv2.resizeWindow(WINDOW, min(w, 1280), min(h, 720))
 
-    if not run_calibration(cap, bg_model, w, h, seconds=3):
-        cap.release(); cv2.destroyAllWindows(); return
+    try:
+        if not run_calibration(cap, bg_model, w, h, config.camera.calibration_seconds):
+            return
 
-    bg_model.finalize()
+        bg_model.finalize()
+        sc_idx = 0
+        ctx = FrameContext(frame=np.zeros((h, w, 3), dtype=np.uint8))
 
-    sc_idx = 0
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            time.sleep(0.02); continue
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                time.sleep(0.02)
+                continue
 
-        hud.tick()
+            compositor.tick()
+            
+            # Update Context
+            ctx.frame = frame
+            ctx.background = bg_model.get()
+            ctx.segmentation_mask = seg.get_mask(frame)
+            
+            # Vision processing
+            tracker.process(frame, ctx)
+            
+            # Interaction
+            detector.update(ctx)
+            
+            # Effects
+            effect.update_alpha(detector.invisible)
+            frame = effect.apply(frame, ctx)
+            
+            # Rendering
+            out = compositor.render(frame, ctx, effect.alpha, detector.is_active, detector.tl, detector.br, detector.invisible)
 
-        seg_mask = seg.get_mask(frame)
-        results  = tracker.process(frame)
-        info     = tracker.get_info(results, w, h)
-
-        portal.update(info)
-        portal.update_alpha()
-
-        out = portal.render(frame, seg_mask, bg_model.get(), info["all_points"])
-        out = hud.draw(out, portal, info)
-
-        cv2.imshow(WINDOW, out)
-        key = cv2.waitKey(1) & 0xFF
-        if key in (ord('q'), 27):
-            break
-        elif key == ord('s'):
-            fn = f"screenshot_{sc_idx:04d}.png"
-            cv2.imwrite(fn, out)
-            print(f"[SCREENSHOT] {fn}")
-            sc_idx += 1
-        elif key == ord('r'):
-            bg_model.reset()
-            portal.invisible = False
-            portal._alpha    = 0.0
-            if not run_calibration(cap, bg_model, w, h, 3):
+            cv2.imshow(WINDOW, out)
+            key = cv2.waitKey(1) & 0xFF
+            
+            if key in (ord('q'), 27):
                 break
-            bg_model.finalize()
-
-    cap.release()
-    cv2.destroyAllWindows()
-    print("\n[DONE]")
+            elif key == ord('s'):
+                fn = f"screenshot_{sc_idx:04d}.png"
+                cv2.imwrite(fn, out)
+                print(f"[SCREENSHOT] {fn}")
+                sc_idx += 1
+            elif key == ord('r'):
+                bg_model.reset()
+                detector.reset()
+                effect.alpha = 0.0
+                if not run_calibration(cap, bg_model, w, h, config.camera.calibration_seconds):
+                    break
+                bg_model.finalize()
+                
+    finally:
+        cap.release()
+        seg.close()
+        tracker.close()
+        cv2.destroyAllWindows()
+        print("\n[DONE]")
 
 if __name__ == "__main__":
     main()
