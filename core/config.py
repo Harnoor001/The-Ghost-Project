@@ -22,9 +22,23 @@ class GestureConfig:
     gesture_cooldown_sec: float = 0.50
 
 @dataclass
+class BackgroundConfig:
+    """Configuration for the streaming background model."""
+    # Continuous EMA update after calibration
+    update_enabled: bool = True
+    update_rate: float = 0.02            # EMA alpha (~30 FPS → slow drift)
+    foreground_protection: bool = True   # Skip EMA update on fg pixels
+    stale_threshold_sec: float = 5.0     # Seconds without bg update → stale
+
+    # Calibration behaviour
+    calibration_min_frames: int = 15     # Frames before mask-based accumulation starts
+    calibration_update_interval: int = 6 # (kept for API compat; not used by Phase-2 model)
+
+@dataclass
 class AppConfig:
     camera: CameraConfig = field(default_factory=CameraConfig)
     segmentation: SegmentationConfig = field(default_factory=SegmentationConfig)
     gesture: GestureConfig = field(default_factory=GestureConfig)
+    background: BackgroundConfig = field(default_factory=BackgroundConfig)
 
 config = AppConfig()

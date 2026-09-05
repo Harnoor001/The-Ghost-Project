@@ -25,22 +25,36 @@ Ghost / Invisibility Mode
 """
 WINDOW = "Ghost / Invisibility Mode"
 
-def run_calibration(cap: Camera, bg_model: BackgroundModel, w: int, h: int, seconds: int):
+def run_calibration(
+    cap: Camera,
+    bg_model: BackgroundModel,
+    seg: SegmentationEngine,
+    w: int,
+    h: int,
+    seconds: int,
+):
     print(f"[CAL] Stand still {seconds}s ...")
     start = time.time()
     while time.time() - start < seconds:
         ret, frame = cap.read()
-        if not ret: continue
-        bg_model.update(frame.astype(np.float32))
-        rem = int(seconds - (time.time()-start)) + 1
+        if not ret:
+            continue
+        frame_f32 = frame.astype(np.float32)
+        # Get segmentation mask for foreground exclusion.
+        # For the first calibration_min_frames frames the model ignores the
+        # mask (warm-up period), but we still pass it so the BackgroundModel
+        # can decide internally.
+        mask = seg.get_mask(frame)
+        bg_model.update(frame_f32, foreground_mask=mask, allow_update=False)
+        rem = int(seconds - (time.time() - start)) + 1
         disp = (frame * 0.5).astype(np.uint8)
         msg = "STAND STILL  —  CALIBRATING BACKGROUND"
         tw = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0][0]
-        cv2.putText(disp, msg, ((w-tw)//2, h//2-50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,230,255), 2, cv2.LINE_AA)
+        cv2.putText(disp, msg, ((w - tw) // 2, h // 2 - 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 230, 255), 2, cv2.LINE_AA)
         tw2 = cv2.getTextSize(str(rem), cv2.FONT_HERSHEY_SIMPLEX, 4.0, 5)[0][0]
-        cv2.putText(disp, str(rem), ((w-tw2)//2, h//2+80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 4.0, (0,255,120), 5, cv2.LINE_AA)
+        cv2.putText(disp, str(rem), ((w - tw2) // 2, h // 2 + 80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 4.0, (0, 255, 120), 5, cv2.LINE_AA)
         cv2.imshow(WINDOW, disp)
         if cv2.waitKey(1) & 0xFF in (ord('q'), 27):
             return False
@@ -62,7 +76,16 @@ def main():
 
     seg = SegmentationEngine(config.segmentation)
     tracker = HandTracker(config.gesture)
-    bg_model = BackgroundModel(h, w)
+    bg_cfg = config.background
+    bg_model = BackgroundModel(
+        h, w,
+        calibration_min_frames=bg_cfg.calibration_min_frames,
+        calibration_update_interval=bg_cfg.calibration_update_interval,
+        update_enabled=bg_cfg.update_enabled,
+        update_rate=bg_cfg.update_rate,
+        foreground_protection=bg_cfg.foreground_protection,
+        stale_threshold_sec=bg_cfg.stale_threshold_sec,
+    )
     
     detector = GestureDetector(config.gesture)
     effect = InvisibilityEffect()
@@ -73,7 +96,7 @@ def main():
     cv2.resizeWindow(WINDOW, min(w, 1280), min(h, 720))
 
     try:
-        if not run_calibration(cap, bg_model, w, h, config.camera.calibration_seconds):
+        if not run_calibration(cap, bg_model, seg, w, h, config.camera.calibration_seconds):
             return
 
         bg_model.finalize()
@@ -89,31 +112,38 @@ def main():
                 continue
 
             compositor.tick()
-            
-            # Update Context
+
+            # ── Vision ────────────────────────────────────────────────────
             ctx.frame = frame
-            ctx.background = bg_model.get()
             ctx.segmentation_mask = seg.get_mask(frame)
-            
+
+            # EMA update of background (only meaningful pixels; fg is protected)
+            frame_f32 = frame.astype(np.float32)
+            bg_model.update(frame_f32, foreground_mask=ctx.segmentation_mask, allow_update=True)
+
+            # Safety guard: only expose background when the model is valid
+            ctx.background_valid = bg_model.is_valid()
+            ctx.background = bg_model.get() if ctx.background_valid else None
+
             # Vision processing
             tracker.process(frame, ctx)
-            
+
             # Interaction
             events = detector.update(ctx)
-            
+
             if GestureEvent.PINCH_CONFIRMED in events:
                 app_invisible = not app_invisible
-            
+
             # Effects
             effect.update_alpha(app_invisible)
             frame = effect.apply(frame, ctx)
-            
+
             # Rendering
             out = compositor.render(frame, ctx, effect.alpha, detector.zone.is_active, detector.zone.tl, detector.zone.br, app_invisible)
 
             cv2.imshow(WINDOW, out)
             key = cv2.waitKey(1) & 0xFF
-            
+
             if key in (ord('q'), 27):
                 break
             elif key == ord('s'):
@@ -126,10 +156,10 @@ def main():
                 detector.reset()
                 app_invisible = False
                 effect.alpha = 0.0
-                if not run_calibration(cap, bg_model, w, h, config.camera.calibration_seconds):
+                if not run_calibration(cap, bg_model, seg, w, h, config.camera.calibration_seconds):
                     break
                 bg_model.finalize()
-                
+
     finally:
         cap.release()
         seg.close()

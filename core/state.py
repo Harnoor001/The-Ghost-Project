@@ -5,6 +5,7 @@ import numpy as np
 class FrameContext:
     frame: np.ndarray
     background: np.ndarray | None = None
+    background_valid: bool = True          # False → background is stale/unavailable
     segmentation_mask: np.ndarray | None = None
     hand_count: int = 0
     pinch_ratios: list = field(default_factory=list)

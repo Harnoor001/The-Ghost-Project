@@ -21,6 +21,7 @@ class Compositor:
             draw_hand_mesh(frame, ctx.all_points)
             
         # 4. HUD
-        self.hud.draw(frame, alpha, is_active, ctx.hand_count, ctx.fingers_touching)
+        self.hud.draw(frame, alpha, is_active, ctx.hand_count, ctx.fingers_touching,
+                      background_valid=ctx.background_valid)
         
         return frame

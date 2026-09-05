@@ -146,6 +146,67 @@ The-Ghost-Project/
 
 ---
 
+## Background Model 2.0
+
+The background model uses a streaming, memory-efficient design to capture and maintain the reference background frame used for the invisibility effect.
+
+### Streaming Calibration
+
+During the 3-second calibration phase the model accumulates frames using **per-pixel weighted averaging**.
+
+- **First 15 frames:** all pixels are accepted without a foreground mask, giving the segmentation model time to stabilise.
+- **Subsequent frames:** a foreground mask from MediaPipe Selfie Segmentation is applied. Each pixel accumulates only its *background* contribution, weighted by `1.0 − foreground_mask`. This means a pixel that is partially or fully occupied by a person is excluded (or down-weighted) from the background estimate, preventing the person from contaminating the captured background.
+
+**Why per-pixel counts matter:**
+
+| Pixel | Frame 1 | Frame 2 | Frame 3 | Naïve mean | Correct mean |
+|-------|---------|---------|---------|-----------|-------------|
+| Wall  | 10      | 20      | 30      | 20        | **20**      |
+| Person (foreground) | 100 | 100 | 100 | 66.7 (wrong) | **fallback ≈ 20** (correct) |
+
+Using a global frame count for masked pixels produces artificially dark values. The per-pixel count eliminates this error.
+
+### Foreground Protection During EMA
+
+After calibration, the model optionally refines the background in real time using **Exponential Moving Average (EMA)**:
+
+```
+background ← (1 − eff_alpha) × background + eff_alpha × frame
+eff_alpha[h,w] = update_rate × (1 − foreground_mask[h,w])
+```
+
+With `update_rate = 0.02`:
+- **Background pixels:** normal slow update (α ≈ 0.02).
+- **Person pixels (mask ≈ 1):** eff_alpha ≈ 0, effectively no update — the person is never absorbed into the background.
+- **Uncertain pixels (mask ≈ 0.5):** partial update.
+
+### Gradual Lighting Adaptation
+
+The EMA slowly adapts to lighting changes. At 30 FPS with α = 0.02, small room-lighting changes will gradually propagate into the background over several seconds. Sudden, large changes (e.g., switching lights off) take longer — **press R to recalibrate** for fast recovery.
+
+### Stale Detection
+
+If the model goes more than **5 seconds** without receiving a meaningful background update (i.e., every frame has been fully foreground), it is marked **stale**.
+
+- The HUD displays: *"Background stale — press R to recalibrate"*
+- The invisibility effect is automatically disabled until the background is valid again.
+- The stale background data is **not destroyed** — it is simply not fed to the effect.
+
+### Recalibration
+
+Press **R** at any time to:
+1. Reset the background model.
+2. Run a fresh 3-second calibration.
+3. Resume normal operation.
+
+### Limitations
+
+- **Camera movement:** if the camera is physically moved, the captured background becomes incorrect. The model has no camera-motion compensation. Press R to recalibrate after repositioning the camera.
+- **Multi-person scenes:** background protection is only as accurate as the segmentation mask. MediaPipe Selfie Segmentation is optimised for a single person; results with multiple people may be imperfect.
+- **Memory:** the model uses O(frame\_size) memory — three arrays of shape H×W×3 or H×W at most. No frame history is stored.
+
+---
+
 # Troubleshooting
 
 ## Error

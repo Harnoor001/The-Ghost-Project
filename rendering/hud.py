@@ -10,6 +10,7 @@ class HUD:
     WHITE = (220, 220, 220)
     GREEN = (0, 255, 140)
     DIM   = (80,  80,  80)
+    AMBER = (0, 165, 255)   # BGR amber for stale warning
 
     def __init__(self, h, w, dev_str):
         self.h, self.w = h, w
@@ -26,7 +27,8 @@ class HUD:
     def fps(self):
         return np.mean(self._fps_buf) if self._fps_buf else 0.0
 
-    def draw(self, frame, alpha: float, is_active: bool, hand_count: int, touching: bool):
+    def draw(self, frame, alpha: float, is_active: bool, hand_count: int, touching: bool,
+             background_valid: bool = True):
         h, w = self.h, self.w
 
         frame[0:48, :] = (frame[0:48, :] * 0.35).astype(np.uint8)
@@ -61,7 +63,13 @@ class HUD:
         cv2.putText(frame, time.strftime("%H:%M:%S"),
                     (w-110, by+8), self.MONO, 0.42, self.DIM, 1, cv2.LINE_AA)
 
-        if touching:
+        # ── Stale background warning ─────────────────────────────────────
+        if not background_valid:
+            warn = "Background stale — press R to recalibrate"
+            tw = cv2.getTextSize(warn, self.FONT, 0.42, 1)[0][0]
+            cv2.putText(frame, warn, ((w - tw) // 2, h - 52),
+                        self.FONT, 0.42, self.AMBER, 1, cv2.LINE_AA)
+        elif touching:
             tw = cv2.getTextSize("PINCH DETECTED!", self.FONT, 0.55, 2)[0][0]
             cv2.putText(frame, "PINCH DETECTED!", ((w-tw)//2, h-52),
                         self.FONT, 0.55, (0,255,120), 2, cv2.LINE_AA)
