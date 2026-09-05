@@ -9,7 +9,7 @@ from core.camera import Camera
 from vision.segmentation import SegmentationEngine
 from vision.hand_tracking import HandTracker
 from vision.background import BackgroundModel
-from interaction.gestures import GestureDetector
+from interaction.gestures import GestureDetector, GestureEvent
 from effects.invisibility import InvisibilityEffect
 from rendering.compositor import Compositor
 
@@ -80,6 +80,8 @@ def main():
         sc_idx = 0
         ctx = FrameContext(frame=np.zeros((h, w, 3), dtype=np.uint8))
 
+        app_invisible = False
+
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -97,14 +99,17 @@ def main():
             tracker.process(frame, ctx)
             
             # Interaction
-            detector.update(ctx)
+            events = detector.update(ctx)
+            
+            if GestureEvent.PINCH_CONFIRMED in events:
+                app_invisible = not app_invisible
             
             # Effects
-            effect.update_alpha(detector.invisible)
+            effect.update_alpha(app_invisible)
             frame = effect.apply(frame, ctx)
             
             # Rendering
-            out = compositor.render(frame, ctx, effect.alpha, detector.is_active, detector.tl, detector.br, detector.invisible)
+            out = compositor.render(frame, ctx, effect.alpha, detector.zone.is_active, detector.zone.tl, detector.zone.br, app_invisible)
 
             cv2.imshow(WINDOW, out)
             key = cv2.waitKey(1) & 0xFF
@@ -119,6 +124,7 @@ def main():
             elif key == ord('r'):
                 bg_model.reset()
                 detector.reset()
+                app_invisible = False
                 effect.alpha = 0.0
                 if not run_calibration(cap, bg_model, w, h, config.camera.calibration_seconds):
                     break

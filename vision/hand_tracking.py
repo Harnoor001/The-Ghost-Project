@@ -30,7 +30,7 @@ class HandTracker:
 
         ctx.hand_count = len(results.multi_hand_landmarks)
         index_tips = []
-        any_pinch = False
+        pinch_ratios = []
 
         for lms in results.multi_hand_landmarks:
             lm = lms.landmark
@@ -47,10 +47,11 @@ class HandTracker:
 
             if palm_size > 1e-6:
                 ratio = pinch_dist / palm_size
-                if ratio < self.config.pinch_ratio_threshold:
-                    any_pinch = True
+                pinch_ratios.append(ratio)
+            else:
+                pinch_ratios.append(999.0)
 
-        ctx.fingers_touching = any_pinch
+        ctx.pinch_ratios = pinch_ratios
 
         if len(index_tips) >= 2:
             ctx.tips = (index_tips[0], index_tips[1])
