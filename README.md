@@ -46,24 +46,29 @@ Supported gestures:
 
 # Installation
 
-
-
-Move into the project directory:
-
+1. Clone the repository:
 ```bash
-cd Invisibility-Computer-Vision
+git clone https://github.com/Harnoor001/The-Ghost-Project.git
+cd The-Ghost-Project
 ```
 
-Install the required packages:
+2. Create and activate a virtual environment:
 
+**Windows:**
 ```bash
-pip install opencv-python numpy mediapipe
+python -m venv venv
+venv\Scripts\activate
 ```
 
-or
-
+**macOS/Linux:**
 ```bash
-pip install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+```
+
+3. Install the project and its dependencies:
+```bash
+pip install .
 ```
 
 ---
@@ -118,14 +123,12 @@ Repeat the pinch gesture.
 # Project Structure
 
 ```
-Invisibility-Computer-Vision/
+The-Ghost-Project/
 │
+├── pyproject.toml
 ├── main.py
 ├── engine.py
-├── utils.py
-├── requirements.txt
-├── README.md
-└── assets/
+└── README.md
 ```
 
 ---

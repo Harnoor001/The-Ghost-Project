@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "the-ghost-project"
+version = "0.1.0"
+description = "A real-time computer vision application that creates an invisibility effect."
+readme = "README.md"
+requires-python = ">=3.10, <3.13"
+dependencies = [
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "mediapipe>=0.10.5"
+]
+
+[project.optional-dependencies]
+dev = [
+    # Development tools can be added here later (e.g., pytest, ruff, mypy)
+]
