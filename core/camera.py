@@ -14,7 +14,9 @@ class Camera:
                     
         for backend, name in backends:
             print(f"[CAM] Trying {name} ...")
-            _c = cv2.VideoCapture(index + backend)
+            # Pass the camera index and backend separately. Adding the backend
+            # constant to the index attempts to open a different device.
+            _c = cv2.VideoCapture(index, backend)
             if _c.isOpened():
                 _c.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
                 _c.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)

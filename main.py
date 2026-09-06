@@ -63,7 +63,13 @@ def run_calibration(
 
 def main():
     print(BANNER)
-    cam_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    try:
+        cam_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+        if cam_idx < 0:
+            raise ValueError
+    except ValueError:
+        print("[ERROR] Camera index must be a non-negative integer.")
+        sys.exit(2)
 
     try:
         cap = Camera(cam_idx, config.camera)
@@ -124,6 +130,10 @@ def main():
             # Safety guard: only expose background when the model is valid
             ctx.background_valid = bg_model.is_valid()
             ctx.background = bg_model.get() if ctx.background_valid else None
+            if not ctx.background_valid:
+                # Do not leave the UI in ghost mode when its reference
+                # background is unavailable or stale.
+                app_invisible = False
 
             # Vision processing
             tracker.process(frame, ctx)
