@@ -13,11 +13,11 @@ sleeping.
 from __future__ import annotations
 
 import numpy as np
-import pytest
+
 from vision.background import BackgroundModel
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def make_frame(h: int, w: int, value: float) -> np.ndarray:
     """Uniform float32 frame of shape (H, W, 3)."""
@@ -31,6 +31,7 @@ def make_mask(h: int, w: int, value: float) -> np.ndarray:
 
 class MockClock:
     """Controllable monotonic clock for tests."""
+
     def __init__(self, t: float = 0.0):
         self._t = t
 
@@ -42,6 +43,7 @@ class MockClock:
 
 
 # ── TEST 1 — Simple mean (no mask) ────────────────────────────────────────────
+
 
 def test_mean_no_mask():
     """Three unmasked frames → background = arithmetic mean."""
@@ -55,6 +57,7 @@ def test_mean_no_mask():
 
 
 # ── TEST 2 — Reset ─────────────────────────────────────────────────────────────
+
 
 def test_reset_clears_all_state():
     """reset() must return model to empty state with no accumulated data."""
@@ -73,6 +76,7 @@ def test_reset_clears_all_state():
 
 
 # ── TEST 3 — Foreground exclusion ─────────────────────────────────────────────
+
 
 def test_foreground_exclusion_binary_mask():
     """Foreground pixels must NOT influence the background mean.
@@ -113,6 +117,7 @@ def test_foreground_exclusion_binary_mask():
 
 # ── TEST 4 — Per-pixel counts ──────────────────────────────────────────────────
 
+
 def test_per_pixel_counts_independent():
     """Different pixels can have different effective observation counts.
 
@@ -128,10 +133,10 @@ def test_per_pixel_counts_independent():
     bg = BackgroundModel(H, W, calibration_min_frames=0)
 
     frame1 = np.array([[[10.0, 10.0, 10.0], [100.0, 100.0, 100.0]]], dtype=np.float32)
-    mask1  = np.array([[0.0, 1.0]], dtype=np.float32)   # B is foreground
+    mask1 = np.array([[0.0, 1.0]], dtype=np.float32)  # B is foreground
 
     frame2 = np.array([[[20.0, 20.0, 20.0], [200.0, 200.0, 200.0]]], dtype=np.float32)
-    mask2  = np.array([[0.0, 0.0]], dtype=np.float32)   # both background
+    mask2 = np.array([[0.0, 0.0]], dtype=np.float32)  # both background
 
     bg.update(frame1, foreground_mask=mask1, allow_update=False)
     bg.update(frame2, foreground_mask=mask2, allow_update=False)
@@ -148,6 +153,7 @@ def test_per_pixel_counts_independent():
 
 
 # ── TEST 5 — EMA update ────────────────────────────────────────────────────────
+
 
 def test_ema_update_single_step():
     """One EMA step: bg=100, frame=200, alpha=0.02 → ~102."""
@@ -168,6 +174,7 @@ def test_ema_update_single_step():
 
 
 # ── TEST 6 — Foreground protection ────────────────────────────────────────────
+
 
 def test_foreground_protection_prevents_contamination():
     """Person pixels (mask=1) must not be absorbed into the background.
@@ -194,6 +201,7 @@ def test_foreground_protection_prevents_contamination():
 
 # ── TEST 7 — Partial mask (0.5) ───────────────────────────────────────────────
 
+
 def test_partial_mask_ema_scaling():
     """With mask=0.5 the effective alpha is halved compared to mask=0.
 
@@ -209,7 +217,7 @@ def test_partial_mask_ema_scaling():
     half_mask = make_mask(5, 5, 0.5)
     bg.update(make_frame(5, 5, 200.0), foreground_mask=half_mask, allow_update=True)
 
-    eff_alpha = 0.02 * 0.5   # = 0.01
+    eff_alpha = 0.02 * 0.5  # = 0.01
     expected = (1 - eff_alpha) * 100.0 + eff_alpha * 200.0  # = 101.0
     assert np.allclose(bg.get(), expected, atol=0.5), (
         f"Expected ≈{expected}, got {bg.get().mean():.2f}"
@@ -217,6 +225,7 @@ def test_partial_mask_ema_scaling():
 
 
 # ── TEST 8 — No-mask EMA compatibility ────────────────────────────────────────
+
 
 def test_no_mask_ema_compatibility():
     """update(frame, foreground_mask=None, allow_update=True) must not crash."""
@@ -234,6 +243,7 @@ def test_no_mask_ema_compatibility():
 
 
 # ── TEST 9 — Lighting adaptation ──────────────────────────────────────────────
+
 
 def test_lighting_adaptation_gradual():
     """Background adapts gradually when lighting changes.
@@ -261,6 +271,7 @@ def test_lighting_adaptation_gradual():
 
 # ── TEST 10 — Stale detection (mock clock) ────────────────────────────────────
 
+
 def test_stale_detection_mock_clock():
     """is_valid() returns False when elapsed > stale_threshold_sec.
 
@@ -282,11 +293,14 @@ def test_stale_detection_mock_clock():
     assert bg.stale is True
 
     # Background data is NOT destroyed — just flagged stale
-    assert bg.get() is None     # get() returns None when not valid
-    assert bg.bg is not None    # but underlying data is still there
+    assert bg.get() is None  # get() returns None when not valid
+    assert bg.bg is not None  # but underlying data is still there
+    # The effect may continue using a stable calibrated reference.
+    assert bg.get_reference() is bg.bg
 
 
 # ── TEST 11 — Recovery after stale ────────────────────────────────────────────
+
 
 def test_recovery_after_stale():
     """reset() clears stale state; recalibration restores is_valid()."""
@@ -314,6 +328,7 @@ def test_recovery_after_stale():
 
 # ── TEST 12 — Memory regression ───────────────────────────────────────────────
 
+
 def test_no_frame_buffer_in_memory():
     """Model must never hold a list/deque of full frames.
 
@@ -324,19 +339,14 @@ def test_no_frame_buffer_in_memory():
         bg.update(make_frame(100, 100, 50.0))
 
     # Known forbidden attribute names
-    forbidden = ('buf', 'frames', 'frame_buffer', 'history', 'frame_list',
-                 'deque', 'buffer')
+    forbidden = ("buf", "frames", "frame_buffer", "history", "frame_list", "deque", "buffer")
     for name in forbidden:
         assert not hasattr(bg, name), f"BackgroundModel has forbidden attribute: {name!r}"
 
     # The only ndarray attributes should be O(frame_size), not O(frames × frame_size)
     frame_size = 100 * 100 * 3 * 4  # bytes for float32 (H, W, 3)
     max_acceptable = frame_size * 5  # generous: at most 5× frame size total
-    arr_bytes = sum(
-        a.nbytes
-        for a in vars(bg).values()
-        if isinstance(a, np.ndarray)
-    )
+    arr_bytes = sum(a.nbytes for a in vars(bg).values() if isinstance(a, np.ndarray))
     assert arr_bytes <= max_acceptable, (
         f"Total ndarray memory {arr_bytes} bytes exceeds {max_acceptable} bytes "
         f"(O(frame_size) × 5). Frame buffers may have been introduced."

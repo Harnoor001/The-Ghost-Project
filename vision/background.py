@@ -40,9 +40,9 @@ import numpy as np
 
 
 class _State(Enum):
-    EMPTY      = auto()
+    EMPTY = auto()
     CALIBRATING = auto()
-    READY      = auto()
+    READY = auto()
 
 
 class BackgroundModel:
@@ -69,7 +69,7 @@ class BackgroundModel:
         w: int,
         *,
         calibration_min_frames: int = 15,
-        calibration_update_interval: int = 6,   # not used, kept for compat
+        calibration_update_interval: int = 6,  # not used, kept for compat
         update_enabled: bool = True,
         update_rate: float = 0.02,
         foreground_protection: bool = True,
@@ -78,13 +78,13 @@ class BackgroundModel:
     ):
         self.h = h
         self.w = w
-        self._calibration_min_frames    = calibration_min_frames
+        self._calibration_min_frames = calibration_min_frames
         self._calibration_update_interval = calibration_update_interval
-        self._update_enabled            = update_enabled
-        self._update_rate               = update_rate
-        self._foreground_protection     = foreground_protection
-        self._stale_threshold_sec       = stale_threshold_sec
-        self._clock                     = clock
+        self._update_enabled = update_enabled
+        self._update_rate = update_rate
+        self._foreground_protection = foreground_protection
+        self._stale_threshold_sec = stale_threshold_sec
+        self._clock = clock
 
         self.reset()
 
@@ -97,12 +97,12 @@ class BackgroundModel:
         self._state: _State = _State.EMPTY
 
         # Streaming accumulators — lazily allocated on first frame
-        self._pixel_sum:   Optional[np.ndarray] = None   # float32, (H, W, 3)
-        self._pixel_count: Optional[np.ndarray] = None   # float32, (H, W)
-        self._global_count: int = 0                      # unmasked frame count
+        self._pixel_sum: Optional[np.ndarray] = None  # float32, (H, W, 3)
+        self._pixel_count: Optional[np.ndarray] = None  # float32, (H, W)
+        self._global_count: int = 0  # unmasked frame count
 
         # Finalised background
-        self.bg:    Optional[np.ndarray] = None
+        self.bg: Optional[np.ndarray] = None
         self.ready: bool = False
 
         self._last_update_ts: float = 0.0
@@ -160,17 +160,21 @@ class BackgroundModel:
         # Using _pixel_sum / _global_count is wrong when masks are present because
         # unobserved pixels (weight=0 every frame) have pixel_sum=0 regardless of
         # global_count — that produces black pixels, not the background mean.
-        observed = self._pixel_count > 0   # (H, W)
+        observed = self._pixel_count > 0  # (H, W)
         if np.any(observed):
             # Per-channel mean of only the observed background pixels
             obs_mean_per_ch = (
-                self._pixel_sum[observed].sum(axis=0)         # (3,)
-                / self._pixel_count[observed].sum()            # scalar
+                self._pixel_sum[observed].sum(axis=0)  # (3,)
+                / self._pixel_count[observed].sum()  # scalar
             )  # shape (3,)
-            global_mean = np.broadcast_to(
-                obs_mean_per_ch[np.newaxis, np.newaxis, :],   # (1, 1, 3)
-                (self.h, self.w, 3)
-            ).astype(np.float32).copy()
+            global_mean = (
+                np.broadcast_to(
+                    obs_mean_per_ch[np.newaxis, np.newaxis, :],  # (1, 1, 3)
+                    (self.h, self.w, 3),
+                )
+                .astype(np.float32)
+                .copy()
+            )
         elif self._global_count > 0:
             # All pixels fully foreground — fall back to unmasked mean
             global_mean = (self._pixel_sum / self._global_count).astype(np.float32)
@@ -178,8 +182,8 @@ class BackgroundModel:
             global_mean = np.full((self.h, self.w, 3), 128.0, dtype=np.float32)
 
         # ── Per-pixel mean where observations exist ────────────────────────
-        count = self._pixel_count[..., np.newaxis]          # (H, W, 1)
-        has_obs = self._pixel_count > 0                     # (H, W) bool
+        count = self._pixel_count[..., np.newaxis]  # (H, W, 1)
+        has_obs = self._pixel_count > 0  # (H, W) bool
         bg = np.where(
             has_obs[..., np.newaxis],
             self._pixel_sum / np.maximum(count, 1e-6),
@@ -194,6 +198,16 @@ class BackgroundModel:
     def get(self) -> Optional[np.ndarray]:
         """Return the current background, or None if not ready or stale."""
         return self.bg if self.is_valid() else None
+
+    def get_reference(self) -> Optional[np.ndarray]:
+        """Return the calibrated reference whenever one exists.
+
+        A stale EMA timestamp means the scene has not supplied fresh
+        background pixels; it does not invalidate the last known-good static
+        reference. The invisibility effect can keep using that image until
+        the operator recalibrates after a real scene change.
+        """
+        return self.bg if self.ready else None
 
     def is_valid(self) -> bool:
         """True when the background is ready AND not stale."""
@@ -214,10 +228,14 @@ class BackgroundModel:
     # ──────────────────────────────────────────────────────────────────────
 
     def _validate_frame(self, frame: np.ndarray) -> None:
-        if frame.ndim != 3 or frame.shape[0] != self.h or frame.shape[1] != self.w or frame.shape[2] != 3:
+        if (
+            frame.ndim != 3
+            or frame.shape[0] != self.h
+            or frame.shape[1] != self.w
+            or frame.shape[2] != 3
+        ):
             raise ValueError(
-                f"BackgroundModel expects frame shape ({self.h}, {self.w}, 3), "
-                f"got {frame.shape}"
+                f"BackgroundModel expects frame shape ({self.h}, {self.w}, 3), got {frame.shape}"
             )
 
     def _accumulate(
@@ -240,24 +258,24 @@ class BackgroundModel:
 
         # Lazy array allocation on first call
         if self._pixel_sum is None:
-            self._pixel_sum   = np.zeros((self.h, self.w, 3), dtype=np.float32)
-            self._pixel_count = np.zeros((self.h, self.w),    dtype=np.float32)
+            self._pixel_sum = np.zeros((self.h, self.w, 3), dtype=np.float32)
+            self._pixel_count = np.zeros((self.h, self.w), dtype=np.float32)
 
         if self._frame_idx <= self._calibration_min_frames or foreground_mask is None:
             # ── Unmasked warm-up ─────────────────────────────────────────
-            self._pixel_sum   += frame_f32
+            self._pixel_sum += frame_f32
             self._pixel_count += 1.0
             self._global_count += 1
         else:
             # ── Masked per-pixel accumulation ────────────────────────────
-            bg_weight = (1.0 - foreground_mask).astype(np.float32)   # (H, W)
+            bg_weight = (1.0 - foreground_mask).astype(np.float32)  # (H, W)
 
             # Only accumulate frames that have some background content.
             # Avoids inflating _pixel_count for fully-foreground frames.
             if np.any(bg_weight > 0.05):
-                self._pixel_sum   += frame_f32 * bg_weight[..., np.newaxis]
+                self._pixel_sum += frame_f32 * bg_weight[..., np.newaxis]
                 self._pixel_count += bg_weight
-                self._global_count += 1   # for fallback mean computation
+                self._global_count += 1  # for fallback mean computation
 
     def _ema_update(
         self,
@@ -275,19 +293,15 @@ class BackgroundModel:
         alpha = self._update_rate
 
         if foreground_mask is not None and self._foreground_protection:
-            bg_weight = (1.0 - foreground_mask).astype(np.float32)   # (H, W)
-            eff_alpha = (alpha * bg_weight)[..., np.newaxis]          # (H, W, 1)
+            bg_weight = (1.0 - foreground_mask).astype(np.float32)  # (H, W)
+            eff_alpha = (alpha * bg_weight)[..., np.newaxis]  # (H, W, 1)
         else:
             eff_alpha = alpha
             bg_weight = None
 
-        self.bg = (
-            (1.0 - eff_alpha) * self.bg + eff_alpha * frame_f32
-        ).astype(np.float32)
+        self.bg = ((1.0 - eff_alpha) * self.bg + eff_alpha * frame_f32).astype(np.float32)
 
         # Only refresh timestamp if some background pixels were updated
-        updated = (
-            bg_weight is None or np.any(bg_weight > 0.05)
-        )
+        updated = bg_weight is None or np.any(bg_weight > 0.05)
         if updated:
             self._last_update_ts = self._clock()

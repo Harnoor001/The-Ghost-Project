@@ -4,20 +4,54 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "the-ghost-project"
-version = "0.1.0"
+version = "1.0.0"
 description = "A real-time computer vision application that creates an invisibility effect."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+authors = [{name = "Tuba Khan"}]
 requires-python = ">=3.10, <3.13"
-dependencies = [
-    "opencv-python>=4.8.0",
-    "numpy>=1.24.0",
-    "mediapipe>=0.10.5"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
+dependencies = [
+    "opencv-python>=4.8,<5",
+    "numpy>=1.24,<2",
+    "mediapipe==0.10.21"
+]
+
+[project.scripts]
+ghost = "main:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0"
+    "build>=1.2,<2",
+    "pytest>=7,<10",
+    "ruff>=0.6,<1"
 ]
+
+[tool.setuptools.packages.find]
+include = ["core*", "effects*", "interaction*", "rendering*", "vision*"]
+
+[tool.setuptools]
+py-modules = ["main"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [".pytest_cache", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

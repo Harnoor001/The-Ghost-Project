@@ -1,6 +1,9 @@
 import sys
+
 import cv2
+
 from core.config import CameraConfig
+
 
 class Camera:
     def __init__(self, index: int, config: CameraConfig):
@@ -8,10 +11,13 @@ class Camera:
         self.cap = None
         self.device_name = "CPU"
         self._detect_device()
-        
-        backends = ([(cv2.CAP_DSHOW, "DirectShow"), (cv2.CAP_MSMF, "MSMF"), (cv2.CAP_ANY, "Auto")]
-                    if sys.platform == "win32" else [(cv2.CAP_ANY, "Auto")])
-                    
+
+        backends = (
+            [(cv2.CAP_DSHOW, "DirectShow"), (cv2.CAP_MSMF, "MSMF"), (cv2.CAP_ANY, "Auto")]
+            if sys.platform == "win32"
+            else [(cv2.CAP_ANY, "Auto")]
+        )
+
         for backend, name in backends:
             print(f"[CAM] Trying {name} ...")
             # Pass the camera index and backend separately. Adding the backend
@@ -35,6 +41,7 @@ class Camera:
     def _detect_device(self):
         try:
             import torch
+
             if torch.cuda.is_available():
                 self.device_name = "GPU/" + torch.cuda.get_device_name(0).split()[0]
         except ImportError:

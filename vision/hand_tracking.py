@@ -1,10 +1,13 @@
 import cv2
+
 from core.config import GestureConfig
 from core.state import FrameContext
+
 
 class HandTracker:
     def __init__(self, config: GestureConfig):
         import mediapipe as mp
+
         self.config = config
         self.hands = mp.solutions.hands.Hands(
             static_image_mode=False,
@@ -19,12 +22,16 @@ class HandTracker:
         sh = int(h * sw / w)
         small = cv2.resize(frame_bgr, (sw, sh), interpolation=cv2.INTER_AREA)
         results = self.hands.process(cv2.cvtColor(small, cv2.COLOR_BGR2RGB))
-        
+
         ctx.hand_count = 0
         ctx.tips = None
         ctx.fingers_touching = False
+        # Never retain a pinch reading after tracking is lost.  A stale
+        # ratio leaves GestureDetector in PINCH_CONFIRMED and prevents a
+        # later pinch from producing another toggle event.
+        ctx.pinch_ratios = []
         ctx.all_points = []
-        
+
         if not results or not results.multi_hand_landmarks:
             return
 
@@ -42,8 +49,10 @@ class HandTracker:
             index_tips.append((int(index_tip.x * w), int(index_tip.y * h)))
             ctx.all_points.append([(int(p.x * w), int(p.y * h)) for p in lm])
 
-            palm_size = ((wrist.x - mid_mcp.x)**2 + (wrist.y - mid_mcp.y)**2)**0.5
-            pinch_dist = ((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)**0.5
+            palm_size = ((wrist.x - mid_mcp.x) ** 2 + (wrist.y - mid_mcp.y) ** 2) ** 0.5
+            pinch_dist = (
+                (thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2
+            ) ** 0.5
 
             if palm_size > 1e-6:
                 ratio = pinch_dist / palm_size
@@ -55,7 +64,7 @@ class HandTracker:
 
         if len(index_tips) >= 2:
             ctx.tips = (index_tips[0], index_tips[1])
-            
+
     def close(self):
-        if hasattr(self, 'hands') and self.hands is not None:
+        if hasattr(self, "hands") and self.hands is not None:
             self.hands.close()

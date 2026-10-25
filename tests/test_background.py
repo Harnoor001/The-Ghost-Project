@@ -7,7 +7,7 @@ These tests preserve the behaviour verified in Phase 1.  The API has changed:
 """
 
 import numpy as np
-import pytest
+
 from vision.background import BackgroundModel
 
 
@@ -50,24 +50,21 @@ def test_mean_calculation():
 def test_different_pixel_values():
     bg = BackgroundModel(2, 2)
 
-    frame1 = np.array([
-        [[10, 20, 30], [40, 50, 60]],
-        [[70, 80, 90], [100, 110, 120]]
-    ], dtype=np.float32)
+    frame1 = np.array(
+        [[[10, 20, 30], [40, 50, 60]], [[70, 80, 90], [100, 110, 120]]], dtype=np.float32
+    )
 
-    frame2 = np.array([
-        [[30, 40, 50], [60, 70, 80]],
-        [[90, 100, 110], [120, 130, 140]]
-    ], dtype=np.float32)
+    frame2 = np.array(
+        [[[30, 40, 50], [60, 70, 80]], [[90, 100, 110], [120, 130, 140]]], dtype=np.float32
+    )
 
     bg.update(frame1)
     bg.update(frame2)
     bg.finalize()
 
-    expected = np.array([
-        [[20, 30, 40], [50, 60, 70]],
-        [[80, 90, 100], [110, 120, 130]]
-    ], dtype=np.float32)
+    expected = np.array(
+        [[[20, 30, 40], [50, 60, 70]], [[80, 90, 100], [110, 120, 130]]], dtype=np.float32
+    )
 
     assert np.allclose(bg.get(), expected)
 
@@ -108,5 +105,5 @@ def test_additional_frames():
 def test_no_frame_retention():
     bg = BackgroundModel(10, 10)
     # Ensure there are no deque or list attributes tracking full frames
-    assert not hasattr(bg, 'buf')
-    assert not hasattr(bg, 'frames')
+    assert not hasattr(bg, "buf")
+    assert not hasattr(bg, "frames")

@@ -1,7 +1,9 @@
 import time
 from enum import Enum, auto
+
 from core.config import GestureConfig
 from core.state import FrameContext
+
 
 class GestureState(Enum):
     IDLE = auto()
@@ -9,9 +11,11 @@ class GestureState(Enum):
     PINCH_CONFIRMED = auto()
     COOLDOWN = auto()
 
+
 class GestureEvent(Enum):
     PINCH_CONFIRMED = auto()
     PINCH_RELEASED = auto()
+
 
 class InteractionZone:
     def __init__(self):
@@ -32,6 +36,7 @@ class InteractionZone:
             self.tl = None
             self.br = None
 
+
 class GestureDetector:
     def __init__(self, config: GestureConfig):
         self.config = config
@@ -41,10 +46,10 @@ class GestureDetector:
 
     def update(self, ctx: FrameContext) -> list[GestureEvent]:
         self.zone.calculate(ctx)
-        
+
         events = []
         now = time.monotonic()
-        
+
         if ctx.pinch_ratios:
             min_ratio = min(ctx.pinch_ratios)
         else:
@@ -54,7 +59,7 @@ class GestureDetector:
             if min_ratio < self.config.pinch_enter_threshold:
                 self.state = GestureState.PINCH_DETECTED
                 self.state_entered_at = now
-                
+
         elif self.state == GestureState.PINCH_DETECTED:
             if min_ratio > self.config.pinch_exit_threshold:
                 self.state = GestureState.IDLE
@@ -62,19 +67,22 @@ class GestureDetector:
                 self.state = GestureState.PINCH_CONFIRMED
                 self.state_entered_at = now
                 events.append(GestureEvent.PINCH_CONFIRMED)
-                
+
         elif self.state == GestureState.PINCH_CONFIRMED:
             if min_ratio > self.config.pinch_exit_threshold:
                 self.state = GestureState.COOLDOWN
                 self.state_entered_at = now
                 events.append(GestureEvent.PINCH_RELEASED)
-                
+
         elif self.state == GestureState.COOLDOWN:
             if (now - self.state_entered_at) >= self.config.gesture_cooldown_sec:
                 self.state = GestureState.IDLE
 
         # Maintain legacy fingers_touching logic for HUD rendering
-        ctx.fingers_touching = (self.state in (GestureState.PINCH_DETECTED, GestureState.PINCH_CONFIRMED))
+        ctx.fingers_touching = self.state in (
+            GestureState.PINCH_DETECTED,
+            GestureState.PINCH_CONFIRMED,
+        )
 
         return events
 

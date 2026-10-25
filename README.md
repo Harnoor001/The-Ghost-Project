@@ -1,369 +1,115 @@
 # Ghost / Invisibility Mode
 
-A real-time computer vision application that creates an invisibility effect using **Python**, **OpenCV**, and **MediaPipe**. The project performs real-time human segmentation and replaces the detected person with a previously captured background, creating the illusion of becoming invisible.
+Ghost is a local desktop computer-vision application that replaces a person in a webcam stream with a calibrated background. It uses OpenCV for capture/rendering and MediaPipe for person segmentation and hand tracking. No frames are uploaded or stored by the application unless you explicitly save a screenshot.
 
----
+## Production readiness
 
-# Features
+- Reproducible Python package with a `ghost` command
+- Supported Python versions: 3.10, 3.11, and 3.12
+- Pinned MediaPipe runtime compatible with the legacy `mp.solutions` API
+- Graceful errors for missing packages, camera startup failure, interrupted runs, and camera-frame loss
+- Unit tests for the background model and gesture state machine
+- CI checks for supported Python versions
 
-* Real-time invisibility effect
-* Background calibration
-* MediaPipe Selfie Segmentation
-* Hand gesture controls
-* Live webcam processing
-* Screenshot capture
-* Background recalibration
-* Multi-camera support
-* Lightweight and easy to run
+## Requirements
 
----
+- Python 3.10–3.12
+- A webcam accessible to the current user
+- Windows, macOS, or Linux with a desktop session (OpenCV needs a display)
 
-# How It Works
+## Install
 
-The application begins by capturing a clean background frame during initialization.
+Clone the repository, then create an isolated environment.
 
-Using **MediaPipe Selfie Segmentation**, the system detects the user's body in every video frame. When invisibility mode is activated, the segmented foreground is replaced with the stored background frame, making the person appear invisible.
-
-Hand gesture recognition runs simultaneously using **MediaPipe Hands**.
-
-Supported gestures:
-
-* Spread both hands apart to display the interaction area.
-* Pinch the thumb and index finger together on either hand to toggle invisibility.
-* Pinch again to return to normal.
-
----
-
-# Requirements
-
-* Python **3.10**, **3.11**, or **3.12**
-* Webcam
-* Windows, Linux, or macOS
-
-> **Recommended:** Python 3.10 for the best compatibility.
-
----
-
-# Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/Harnoor001/The-Ghost-Project.git
-cd The-Ghost-Project
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install .
 ```
 
-2. Create and activate a virtual environment:
+On macOS/Linux, activate with `source .venv/bin/activate`.
 
-**Windows:**
-```bash
-python -m venv venv
-venv\Scripts\activate
+For development and release checks:
+
+```powershell
+python -m pip install -e ".[dev]"
 ```
 
-**macOS/Linux:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
+## Run
+
+```powershell
+ghost
 ```
 
-3. Install the project and its dependencies:
-```bash
-pip install .
-```
+Or run directly from a checkout:
 
----
-
-# Running the Project
-
-Run using the default webcam:
-
-```bash
+```powershell
 python main.py
 ```
 
-Use another camera:
+Use another camera or adjust the capture settings when needed:
 
-```bash
-python main.py 1
+```powershell
+ghost --camera 1 --width 1280 --height 720 --fps 30
+ghost --help
 ```
 
----
+The legacy positional camera form (`ghost 1`) is also supported. Screenshots are saved in `screenshots/` by default; change this with `--screenshot-dir PATH`.
 
-# Controls
+## Use
 
-| Key     | Function               |
-| ------- | ---------------------- |
-| **R**   | Recalibrate background |
-| **S**   | Save screenshot        |
-| **Q**   | Quit                   |
-| **ESC** | Quit                   |
+1. Start the app and keep the camera fixed.
+2. **Keep the scene clear during the three-second calibration.** The app captures the reference background during this period.
+3. Spread both hands to show the visual interaction box.
+4. Pinch your thumb and index finger on either hand to toggle invisibility.
 
----
+| Input | Action |
+| --- | --- |
+| `R` | Recalibrate the background |
+| `S` | Save a PNG screenshot |
+| `Q` or `Esc` | Quit |
+| Pinch | Toggle visibility |
 
-# Gesture Controls
+## Operational notes
 
-### Calibration
+- Keep the camera fixed after calibration. If the camera moves or lighting changes dramatically, press `R`.
+- The background model adapts gradually to normal lighting changes while avoiding updates in detected foreground regions.
+- If the scene changes substantially, press `R` to recalibrate. A temporary lack of background pixels while you are in frame does not disable invisibility.
+- Close apps such as Teams, Zoom, or browser tabs that are using the webcam before launching Ghost.
+- The app requires a graphical desktop and is not intended for headless servers.
 
-Remain still for approximately **3 seconds** while the application captures the background.
+## Verification and release build
 
-### Show Interaction Box
+Run the full local gate before a release:
 
-Spread both hands apart until a yellow rectangle appears.
-
-### Become Invisible
-
-Pinch your thumb and index finger together on either hand.
-
-### Become Visible Again
-
-Repeat the pinch gesture.
-
----
-
-# Project Structure
-
-```
-The-Ghost-Project/
-│
-├── pyproject.toml
-├── main.py
-├── core/
-├── vision/
-├── interaction/
-├── effects/
-├── rendering/
-└── README.md
+```powershell
+python -m pytest
+python -m ruff check .
+python -m build
 ```
 
----
+The generated wheel and source archive are placed in `dist/`. A physical webcam smoke test remains required because CI cannot validate local camera permissions, drivers, or lighting.
 
-# Technologies Used
+## Project layout
 
-* Python
-* OpenCV
-* MediaPipe
-* NumPy
-
----
-
-## Background Model 2.0
-
-The background model uses a streaming, memory-efficient design to capture and maintain the reference background frame used for the invisibility effect.
-
-### Streaming Calibration
-
-During the 3-second calibration phase the model accumulates frames using **per-pixel weighted averaging**.
-
-- **First 15 frames:** all pixels are accepted without a foreground mask, giving the segmentation model time to stabilise.
-- **Subsequent frames:** a foreground mask from MediaPipe Selfie Segmentation is applied. Each pixel accumulates only its *background* contribution, weighted by `1.0 − foreground_mask`. This means a pixel that is partially or fully occupied by a person is excluded (or down-weighted) from the background estimate, preventing the person from contaminating the captured background.
-
-**Why per-pixel counts matter:**
-
-| Pixel | Frame 1 | Frame 2 | Frame 3 | Naïve mean | Correct mean |
-|-------|---------|---------|---------|-----------|-------------|
-| Wall  | 10      | 20      | 30      | 20        | **20**      |
-| Person (foreground) | 100 | 100 | 100 | 66.7 (wrong) | **fallback ≈ 20** (correct) |
-
-Using a global frame count for masked pixels produces artificially dark values. The per-pixel count eliminates this error.
-
-### Foreground Protection During EMA
-
-After calibration, the model optionally refines the background in real time using **Exponential Moving Average (EMA)**:
-
-```
-background ← (1 − eff_alpha) × background + eff_alpha × frame
-eff_alpha[h,w] = update_rate × (1 − foreground_mask[h,w])
+```text
+core/          camera, configuration, and per-frame state
+vision/        segmentation, hand tracking, and background model
+interaction/   gesture state machine
+effects/       invisibility compositing effect
+rendering/     HUD, hand mesh, and portal visuals
+tests/         hardware-independent unit tests
 ```
 
-With `update_rate = 0.02`:
-- **Background pixels:** normal slow update (α ≈ 0.02).
-- **Person pixels (mask ≈ 1):** eff_alpha ≈ 0, effectively no update — the person is never absorbed into the background.
-- **Uncertain pixels (mask ≈ 0.5):** partial update.
+## Privacy
 
-### Gradual Lighting Adaptation
+Processing happens locally in memory. The application does not send webcam frames over the network and only writes image data when you press `S`.
 
-The EMA slowly adapts to lighting changes. At 30 FPS with α = 0.02, small room-lighting changes will gradually propagate into the background over several seconds. Sudden, large changes (e.g., switching lights off) take longer — **press R to recalibrate** for fast recovery.
+## Security and support
 
-### Stale Detection
+Report security issues privately; see [SECURITY.md](SECURITY.md). General project contributions should include tests for behavior changes.
 
-If the model goes more than **5 seconds** without receiving a meaningful background update (i.e., every frame has been fully foreground), it is marked **stale**.
+## License
 
-- The HUD displays: *"Background stale — press R to recalibrate"*
-- The invisibility effect is automatically disabled until the background is valid again.
-- The stale background data is **not destroyed** — it is simply not fed to the effect.
-
-### Recalibration
-
-Press **R** at any time to:
-1. Reset the background model.
-2. Run a fresh 3-second calibration.
-3. Resume normal operation.
-
-### Limitations
-
-- **Camera movement:** if the camera is physically moved, the captured background becomes incorrect. The model has no camera-motion compensation. Press R to recalibrate after repositioning the camera.
-- **Multi-person scenes:** background protection is only as accurate as the segmentation mask. MediaPipe Selfie Segmentation is optimised for a single person; results with multiple people may be imperfect.
-- **Memory:** the model uses O(frame\_size) memory — three arrays of shape H×W×3 or H×W at most. No frame history is stored.
-
----
-
-# Troubleshooting
-
-## Error
-
-```
-AttributeError: module 'mediapipe' has no attribute 'solutions'
-```
-
-This usually indicates one of the following:
-
-* An incompatible MediaPipe installation.
-* A corrupted MediaPipe installation.
-* A file named `mediapipe.py` or folder named `mediapipe` exists inside the project.
-* An unsupported Python version is being used.
-
----
-
-## Step 1 – Check MediaPipe Version
-
-Run:
-
-```bash
-py -m pip show mediapipe
-```
-
-Compatible versions include:
-
-```
-0.10.5
-0.10.7
-0.10.9
-0.10.11
-0.10.14
-0.10.21
-```
-
----
-
-## Step 2 – Reinstall MediaPipe
-
-Remove the existing installation:
-
-```bash
-py -m pip uninstall mediapipe
-```
-
-Install a compatible version:
-
-```bash
-py -m pip install mediapipe==0.10.21
-```
-
----
-
-## Step 3 – Verify Installation
-
-Run Python:
-
-```bash
-py
-```
-
-Execute:
-
-```python
-import mediapipe as mp
-
-print(mp.__version__)
-print(hasattr(mp, "solutions"))
-```
-
-Expected output:
-
-```
-0.10.21
-True
-```
-
----
-
-## Step 4 – Check for Naming Conflicts
-
-Ensure your project does **not** contain:
-
-```
-mediapipe.py
-```
-
-or
-
-```
-mediapipe/
-```
-
-Rename or remove them if present.
-
----
-
-## Step 5 – Check Python Version
-
-Run:
-
-```bash
-py --version
-```
-
-For best compatibility, use:
-
-```
-Python 3.10
-Python 3.11
-Python 3.12
-```
-
-If using Python 3.14 or later and compatibility issues occur, install Python 3.10–3.12 and reinstall the project dependencies.
-
----
-
-# Screenshots
-
-Add screenshots or GIF demonstrations here.
-
-Example:
-
-```
-screenshots/
-├── calibration.png
-├── invisible-mode.png
-└── gesture-control.gif
-```
-
----
-
-# Future Improvements
-
-* Multiple invisibility modes
-* Background blur mode
-* Green screen replacement
-* Virtual backgrounds
-* Object invisibility
-* Performance optimization using GPU acceleration
-* Gesture customization
-
----
-
-# Contributing
-
-Contributions are welcome.
-
-1. Fork the repository.
-2. Create a new feature branch.
-3. Commit your changes.
-4. Push the branch.
-5. Open a Pull Request.
-
----
-
-License
-
-This project is licensed under the MIT License.
+MIT. See [LICENSE.txt](LICENSE.txt).
